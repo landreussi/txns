@@ -64,9 +64,9 @@ impl Account {
                     match tx.kind {
                         TransactionKind::Dispute => {
                             // Disputing a withdrawal is a tricky question, but I think it should
-                            // add value only in held field, leaving all other fields untouched.
+                            // add value in held field, subtract from avail, and leave total with
+                            // the same value.
                             if amount < &Decimal::ZERO {
-                                avail -= amount;
                                 held -= amount;
                                 total -= amount;
                             } else {
@@ -77,6 +77,7 @@ impl Account {
                         TransactionKind::Resolve => {
                             if amount < &Decimal::ZERO {
                                 held += amount;
+                                avail -= amount;
                             } else {
                                 avail += amount;
                                 held -= amount;
@@ -305,8 +306,11 @@ mod tests {
         let accounts = Account::from_transactions(transactions).unwrap();
         let account = &accounts[0];
 
+        // IDK how to deal with disputed withdrawals, but this looks like it makes sense
+        // to me: although the user has 100 in account, he could use only 70,
+        // because 30 is held.
         assert_eq!(account.total, dec!(100.0));
-        assert_eq!(account.available, dec!(100.0));
+        assert_eq!(account.available, dec!(70.0));
         assert_eq!(account.held, dec!(30.0));
         assert!(!account.locked);
     }
@@ -341,6 +345,7 @@ mod tests {
         let accounts = Account::from_transactions(transactions).unwrap();
         let account = &accounts[0];
 
+        dbg!(&account);
         assert_eq!(account.total, dec!(100.0));
         assert_eq!(account.available, dec!(100.0));
         assert_eq!(account.held, dec!(0.0));
@@ -503,7 +508,7 @@ mod tests {
         let account = &accounts[0];
 
         assert_eq!(account.total, dec!(1600.0));
-        assert_eq!(account.available, dec!(1600.0));
+        assert_eq!(account.available, dec!(1400.0));
         assert_eq!(account.held, dec!(200.0));
         assert!(!account.locked);
     }
