@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use itertools::Itertools;
 use rust_decimal::Decimal;
 use serde::Serialize;
 
@@ -19,67 +20,67 @@ pub struct Account {
 
 impl Account {
     pub fn from_transactions(txns: impl IntoIterator<Item = Transaction>) -> Result<Vec<Self>> {
-        let mut client_txns = HashMap::new();
+        let client_txns = txns.into_iter().into_group_map_by(|tx| tx.client);
 
-        for tx in txns {
-            client_txns
-                .entry(tx.client)
-                .and_modify(|txns: &mut Vec<_>| txns.push(tx.clone()))
-                .or_insert(vec![tx]);
+        client_txns
+            .into_iter()
+            .map(|(client, txns)| Self::process_client_transactions(client, txns))
+            .collect()
+    }
+
+    fn process_client_transactions(client: u16, mut txns: Vec<Transaction>) -> Result<Account> {
+        let tx_amounts: HashMap<_, _> = txns
+            .iter()
+            .filter_map(|tx| match tx.kind {
+                TransactionKind::Deposit { amount } => Some((tx.transaction_id, amount)),
+                TransactionKind::Withdrawal { amount } => Some((tx.transaction_id, -amount)),
+                _ => None,
+            })
+            .collect();
+
+        let total = tx_amounts.values().sum();
+
+        if total < Decimal::ZERO {
+            return Err(Error::NoAvailableFundsToWithdraw { client });
         }
 
-        let mut accounts = Vec::with_capacity(client_txns.len());
+        txns.retain(|tx| {
+            !matches!(
+                tx.kind,
+                TransactionKind::Deposit { .. } | TransactionKind::Withdrawal { .. }
+            )
+        });
 
-        for (client, txns) in &client_txns {
-            let mut tx_map = HashMap::new();
+        let (available, held, locked) = txns.iter().fold(
+            (total, Decimal::ZERO, false),
+            |(mut avail, mut held, mut locked), tx| {
+                let amount = tx_amounts.get(&tx.transaction_id).unwrap_or(&Decimal::ZERO);
 
-            for tx in txns {
-                let amount = match tx.kind {
-                    TransactionKind::Deposit { amount } => amount,
-                    TransactionKind::Withdrawal { amount } => -amount,
-                    _ => Decimal::ZERO,
-                };
-
-                tx_map.insert(tx.transaction_id, amount);
-            }
-
-            let total = tx_map.values().sum();
-            let client = *client;
-
-            if total < Decimal::ZERO {
-                return Err(Error::NoAvailableFundsToWithdraw { client });
-            }
-
-            let mut available = total;
-            let mut held = Decimal::ZERO;
-            let mut locked = false;
-
-            for tx in txns {
-                if let Some(amount) = tx_map.get(&tx.transaction_id) {
-                    match tx.kind {
-                        TransactionKind::Dispute => {
-                            available -= amount;
-                            held += amount;
-                        }
-                        TransactionKind::Resolve => {
-                            available += amount;
-                            held -= amount;
-                        }
-                        TransactionKind::Chargeback => locked = true,
-                        _ => {}
+                match tx.kind {
+                    TransactionKind::Dispute => {
+                        avail -= amount;
+                        held += amount;
                     }
+                    TransactionKind::Resolve => {
+                        avail += amount;
+                        held -= amount;
+                    }
+                    TransactionKind::Chargeback => {
+                        locked = true;
+                    }
+                    _ => unreachable!("processed txs was cleaned"),
                 }
-            }
 
-            accounts.push(Account {
-                client,
-                total,
-                available,
-                held,
-                locked,
-            });
-        }
+                (avail, held, locked)
+            },
+        );
 
-        Ok(accounts)
+        Ok(Account {
+            client,
+            total,
+            available,
+            held,
+            locked,
+        })
     }
 }

@@ -1,7 +1,7 @@
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize, Hash, PartialEq, Eq, Clone)]
+#[derive(Debug, Deserialize, Hash, PartialEq, Eq)]
 #[serde(rename_all = "lowercase", tag = "type")]
 pub enum TransactionKind {
     Deposit { amount: Decimal },
@@ -11,7 +11,7 @@ pub enum TransactionKind {
     Chargeback,
 }
 
-#[derive(Debug, Deserialize, Hash, PartialEq, Eq, Clone)]
+#[derive(Debug, Deserialize, Hash, PartialEq, Eq)]
 pub struct Transaction {
     #[serde(rename = "tx")]
     pub transaction_id: u64,
