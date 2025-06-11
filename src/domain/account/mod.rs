@@ -31,6 +31,8 @@ impl Account {
     }
 
     fn process_client_transactions(client: u16, txns: HashSet<Transaction>) -> Result<Account> {
+        const DEFAULT_PRECISION: u32 = 4;
+
         let tx_amounts: HashMap<_, _> = txns
             .iter()
             .filter_map(|tx| match tx.kind {
@@ -40,7 +42,7 @@ impl Account {
             })
             .collect();
 
-        let mut total = tx_amounts.values().sum();
+        let mut total: Decimal = tx_amounts.values().sum();
 
         if total < Decimal::ZERO {
             return Err(Error::NoAvailableFundsToWithdraw { client });
@@ -92,9 +94,9 @@ impl Account {
 
         Ok(Account {
             client,
-            total,
-            available,
-            held,
+            total: total.round_dp(DEFAULT_PRECISION),
+            available: available.round_dp(DEFAULT_PRECISION),
+            held: held.round_dp(DEFAULT_PRECISION),
             locked,
         })
     }
@@ -513,14 +515,14 @@ mod tests {
                 client: 1,
                 transaction_id: 1,
                 kind: TransactionKind::Deposit {
-                    amount: dec!(100.1234),
+                    amount: dec!(100.0),
                 },
             },
             Transaction {
                 client: 1,
                 transaction_id: 2,
                 kind: TransactionKind::Withdrawal {
-                    amount: dec!(50.5678),
+                    amount: dec!(50.567891),
                 },
             },
         ];
@@ -528,8 +530,7 @@ mod tests {
         let accounts = Account::from_transactions(transactions).unwrap();
         let account = &accounts[0];
 
-        assert_eq!(account.total, dec!(49.5556));
-        assert_eq!(account.available, dec!(49.5556));
+        assert_eq!(account.total, dec!(49.4321));
     }
 
     #[test]
