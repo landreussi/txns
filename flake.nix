@@ -1,5 +1,5 @@
 {
-  description = "Rust development environment with stable toolchain via rustup";
+  description = "Rust development environment with pinned toolchain via rustup";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -10,7 +10,8 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-      in {
+      in
+      {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             rustup
